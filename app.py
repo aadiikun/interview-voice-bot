@@ -4,7 +4,6 @@ from gtts import gTTS
 import os
 import base64
 from io import BytesIO
-import time
 
 # Page config
 st.set_page_config(
@@ -78,7 +77,7 @@ def get_groq_api_key():
     
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
-        st.error("⚠️ GROQ_API_KEY not found in secrets or environment!")
+        st.error("⚠️ GROQ_API_KEY not found!")
         st.stop()
     return api_key
 
@@ -137,86 +136,19 @@ def main():
         st.session_state.messages = []
     if 'conversation_history' not in st.session_state:
         st.session_state.conversation_history = []
-    if 'voice_input' not in st.session_state:
-        st.session_state.voice_input = ""
-    if 'process_voice' not in st.session_state:
-        st.session_state.process_voice = False
     
-    # Voice Input Section
+    # Voice Input Instructions
     st.markdown("### 🎤 Voice Input")
-    
-    voice_html = """
-    <div style="text-align: center; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 10px; margin-bottom: 20px;">
-        <button id="voiceBtn" onclick="startVoiceRecognition()" 
-                style="background: white; color: #667eea; border: none; padding: 15px 30px; 
-                       font-size: 18px; border-radius: 50px; cursor: pointer; font-weight: bold;
-                       box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-            🎤 Click to Speak
-        </button>
-        <p id="status" style="color: white; margin-top: 15px; font-size: 16px;">Ready to listen...</p>
-        <p id="transcript" style="color: white; margin-top: 10px; font-style: italic;"></p>
-    </div>
-    
-    <script>
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    
-    if (!SpeechRecognition) {
-        document.getElementById('status').innerText = '❌ Speech recognition not supported. Please use Chrome or Edge.';
-        document.getElementById('voiceBtn').disabled = true;
-    } else {
-        const recognition = new SpeechRecognition();
-        recognition.continuous = false;
-        recognition.interimResults = false;
-        recognition.lang = 'en-US';
-        
-        window.startVoiceRecognition = function() {
-            document.getElementById('status').innerText = '🎤 Listening... Speak now!';
-            document.getElementById('transcript').innerText = '';
-            document.getElementById('voiceBtn').disabled = true;
-            recognition.start();
-        }
-        
-        recognition.onresult = function(event) {
-            const transcript = event.results[0][0].transcript;
-            document.getElementById('transcript').innerText = '"' + transcript + '"';
-            document.getElementById('status').innerText = '✅ Processing your question...';
-            
-            // Send transcript to Streamlit
-            window.parent.postMessage({
-                type: 'streamlit:setComponentValue',
-                data: transcript
-            }, '*');
-            
-            document.getElementById('voiceBtn').disabled = false;
-        };
-        
-        recognition.onerror = function(event) {
-            document.getElementById('status').innerText = '❌ Error: ' + event.error;
-            document.getElementById('voiceBtn').disabled = false;
-        };
-        
-        recognition.onend = function() {
-            document.getElementById('voiceBtn').disabled = false;
-        };
-    }
-    </script>
-    """
-    
-    voice_result = st.components.v1.html(voice_html, height=180)
-    
-    # Process voice input if received
-    if voice_result:
-        st.session_state.voice_input = voice_result
-        st.session_state.process_voice = True
+    st.info("📱 **How to use voice:** Click the microphone button in your browser's address bar or use voice typing, then paste your question below!")
     
     st.markdown("---")
     
     # Display chat history
-    for message in st.session_state.messages:
+    for i, message in enumerate(st.session_state.messages):
         with st.chat_message(message["role"]):
             st.write(message["content"])
             # If assistant message, show audio player
-            if message["role"] == "assistant" and "audio" in message:
+            if message["role"] == "assistant" and "audio" in message and message["audio"]:
                 st.audio(message["audio"], format="audio/mp3")
     
     # Suggested questions
@@ -243,15 +175,11 @@ def main():
             if st.button("🚀 Push Limits", use_container_width=True):
                 process_input(questions["limits"])
     
-    # Process voice input if flag is set
-    if st.session_state.process_voice and st.session_state.voice_input:
-        process_input(st.session_state.voice_input)
-        st.session_state.process_voice = False
-        st.session_state.voice_input = ""
-    
     # Text input
     st.markdown("### ⌨️ Type Your Question")
-    if user_input := st.chat_input("Or type here..."):
+    user_input = st.chat_input("Type or paste your question here...")
+    
+    if user_input:
         process_input(user_input)
 
 def process_input(user_input):
