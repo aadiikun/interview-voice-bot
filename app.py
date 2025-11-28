@@ -4,6 +4,7 @@ from gtts import gTTS
 import os
 import base64
 from io import BytesIO
+import time
 
 # Page config
 st.set_page_config(
@@ -122,30 +123,11 @@ def text_to_speech(text):
         st.error(f"Error generating speech: {str(e)}")
         return None
 
-def autoplay_audio(audio_bytes):
-    """Create audio player with autoplay"""
-    audio_b64 = base64.b64encode(audio_bytes.read()).decode()
-    audio_html = f"""
-        <audio controls autoplay style="width: 100%;">
-            <source src="data:audio/mp3;base64,{audio_b64}" type="audio/mp3">
-        </audio>
-        <script>
-            // Force play after a brief delay to bypass autoplay restrictions
-            setTimeout(function() {{
-                var audio = document.querySelector('audio');
-                if (audio) {{
-                    audio.play().catch(e => console.log('Autoplay prevented:', e));
-                }}
-            }}, 100);
-        </script>
-    """
-    st.markdown(audio_html, unsafe_allow_html=True)
-
 # Main App
 def main():
     # Header
     st.markdown("<h1 class='main-header'>🎤 Aadi - Voice Interview Bot</h1>", unsafe_allow_html=True)
-    st.markdown("<p class='subtitle'>Ask me about Aditya's journey, superpowers, and what drives him!</p>", unsafe_allow_html=True)
+    st.markdown("<p class='subtitle'>Speak or type your questions about Aditya!</p>", unsafe_allow_html=True)
     
     # Verify API key
     get_groq_api_key()
@@ -155,8 +137,12 @@ def main():
         st.session_state.messages = []
     if 'conversation_history' not in st.session_state:
         st.session_state.conversation_history = []
+    if 'voice_input' not in st.session_state:
+        st.session_state.voice_input = ""
+    if 'process_voice' not in st.session_state:
+        st.session_state.process_voice = False
     
-    # Voice Input Section with Web Speech API
+    # Voice Input Section
     st.markdown("### 🎤 Voice Input")
     
     voice_html = """
@@ -177,69 +163,61 @@ def main():
     if (!SpeechRecognition) {
         document.getElementById('status').innerText = '❌ Speech recognition not supported. Please use Chrome or Edge.';
         document.getElementById('voiceBtn').disabled = true;
-    }
-    
-    const recognition = new SpeechRecognition();
-    recognition.continuous = false;
-    recognition.interimResults = false;
-    recognition.lang = 'en-US';
-    
-    function startVoiceRecognition() {
-        document.getElementById('status').innerText = '🎤 Listening... Speak now!';
-        document.getElementById('transcript').innerText = '';
-        document.getElementById('voiceBtn').disabled = true;
-        recognition.start();
-    }
-    
-    recognition.onresult = function(event) {
-        const transcript = event.results[0][0].transcript;
-        document.getElementById('transcript').innerText = '"' + transcript + '"';
-        document.getElementById('status').innerText = '✅ Got it! Sending to Aadi...';
+    } else {
+        const recognition = new SpeechRecognition();
+        recognition.continuous = false;
+        recognition.interimResults = false;
+        recognition.lang = 'en-US';
         
-        // Find the text input and set the value
-        const textarea = window.parent.document.querySelector('textarea[aria-label="Type here..."]');
-        if (textarea) {
-            // Set value
-            const nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set;
-            nativeTextAreaValueSetter.call(textarea, transcript);
-            
-            // Trigger events
-            textarea.dispatchEvent(new Event('input', { bubbles: true }));
-            textarea.dispatchEvent(new Event('change', { bubbles: true }));
-            
-            // Submit after a short delay
-            setTimeout(() => {
-                const submitButton = window.parent.document.querySelector('button[kind="primary"]');
-                if (submitButton) {
-                    submitButton.click();
-                }
-            }, 500);
+        window.startVoiceRecognition = function() {
+            document.getElementById('status').innerText = '🎤 Listening... Speak now!';
+            document.getElementById('transcript').innerText = '';
+            document.getElementById('voiceBtn').disabled = true;
+            recognition.start();
         }
         
-        document.getElementById('voiceBtn').disabled = false;
-    };
-    
-    recognition.onerror = function(event) {
-        document.getElementById('status').innerText = '❌ Error: ' + event.error;
-        document.getElementById('voiceBtn').disabled = false;
-    };
-    
-    recognition.onend = function() {
-        if (document.getElementById('status').innerText === '🎤 Listening... Speak now!') {
-            document.getElementById('status').innerText = '⚠️ No speech detected. Try again!';
-        }
-        document.getElementById('voiceBtn').disabled = false;
-    };
+        recognition.onresult = function(event) {
+            const transcript = event.results[0][0].transcript;
+            document.getElementById('transcript').innerText = '"' + transcript + '"';
+            document.getElementById('status').innerText = '✅ Processing your question...';
+            
+            // Send transcript to Streamlit
+            window.parent.postMessage({
+                type: 'streamlit:setComponentValue',
+                data: transcript
+            }, '*');
+            
+            document.getElementById('voiceBtn').disabled = false;
+        };
+        
+        recognition.onerror = function(event) {
+            document.getElementById('status').innerText = '❌ Error: ' + event.error;
+            document.getElementById('voiceBtn').disabled = false;
+        };
+        
+        recognition.onend = function() {
+            document.getElementById('voiceBtn').disabled = false;
+        };
+    }
     </script>
     """
     
-    st.components.v1.html(voice_html, height=180)
+    voice_result = st.components.v1.html(voice_html, height=180)
+    
+    # Process voice input if received
+    if voice_result:
+        st.session_state.voice_input = voice_result
+        st.session_state.process_voice = True
+    
     st.markdown("---")
     
     # Display chat history
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.write(message["content"])
+            # If assistant message, show audio player
+            if message["role"] == "assistant" and "audio" in message:
+                st.audio(message["audio"], format="audio/mp3")
     
     # Suggested questions
     if len(st.session_state.messages) == 0:
@@ -265,9 +243,15 @@ def main():
             if st.button("🚀 Push Limits", use_container_width=True):
                 process_input(questions["limits"])
     
+    # Process voice input if flag is set
+    if st.session_state.process_voice and st.session_state.voice_input:
+        process_input(st.session_state.voice_input)
+        st.session_state.process_voice = False
+        st.session_state.voice_input = ""
+    
     # Text input
     st.markdown("### ⌨️ Type Your Question")
-    if user_input := st.chat_input("Type here..."):
+    if user_input := st.chat_input("Or type here..."):
         process_input(user_input)
 
 def process_input(user_input):
@@ -275,27 +259,23 @@ def process_input(user_input):
     # Add user message
     st.session_state.messages.append({"role": "user", "content": user_input})
     
-    with st.chat_message("user"):
-        st.write(user_input)
-    
     # Generate response
-    with st.chat_message("assistant"):
-        with st.spinner("Thinking..."):
-            assistant_message = get_ai_response(user_input, st.session_state.conversation_history)
-            
-            if assistant_message:
-                st.write(assistant_message)
-                
-                # Generate and play audio
-                with st.spinner("Speaking..."):
-                    audio_bytes = text_to_speech(assistant_message)
-                    if audio_bytes:
-                        autoplay_audio(audio_bytes)
-                
-                # Update history
-                st.session_state.messages.append({"role": "assistant", "content": assistant_message})
-                st.session_state.conversation_history.append({"role": "user", "content": user_input})
-                st.session_state.conversation_history.append({"role": "assistant", "content": assistant_message})
+    assistant_message = get_ai_response(user_input, st.session_state.conversation_history)
+    
+    if assistant_message:
+        # Generate audio
+        audio_bytes = text_to_speech(assistant_message)
+        
+        # Add to messages with audio
+        st.session_state.messages.append({
+            "role": "assistant", 
+            "content": assistant_message,
+            "audio": audio_bytes.getvalue() if audio_bytes else None
+        })
+        
+        # Update conversation history
+        st.session_state.conversation_history.append({"role": "user", "content": user_input})
+        st.session_state.conversation_history.append({"role": "assistant", "content": assistant_message})
     
     st.rerun()
 
