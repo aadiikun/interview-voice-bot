@@ -147,13 +147,84 @@ def main():
     if 'conversation_history' not in st.session_state:
         st.session_state.conversation_history = []
     
-    # Voice Input Section (Browser-based)
+    # Voice Input Section with Web Speech API
     st.markdown("### 🎤 Voice Input")
-    audio_file = st.audio_input("Click to record your question")
     
-    if audio_file is not None:
-        st.info("📝 Voice transcription feature requires additional setup. Please type your question below for now.")
+    voice_html = """
+    <div style="text-align: center; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 10px; margin-bottom: 20px;">
+        <button id="voiceBtn" onclick="startVoiceRecognition()" 
+                style="background: white; color: #667eea; border: none; padding: 15px 30px; 
+                       font-size: 18px; border-radius: 50px; cursor: pointer; font-weight: bold;
+                       box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            🎤 Click to Speak
+        </button>
+        <p id="status" style="color: white; margin-top: 15px; font-size: 16px;">Ready to listen...</p>
+        <p id="transcript" style="color: white; margin-top: 10px; font-style: italic;"></p>
+    </div>
     
+    <script>
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    
+    if (!SpeechRecognition) {
+        document.getElementById('status').innerText = '❌ Speech recognition not supported. Please use Chrome or Edge.';
+        document.getElementById('voiceBtn').disabled = true;
+    }
+    
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = 'en-US';
+    
+    function startVoiceRecognition() {
+        document.getElementById('status').innerText = '🎤 Listening... Speak now!';
+        document.getElementById('transcript').innerText = '';
+        document.getElementById('voiceBtn').disabled = true;
+        recognition.start();
+    }
+    
+    recognition.onresult = function(event) {
+        const transcript = event.results[0][0].transcript;
+        document.getElementById('transcript').innerText = '"' + transcript + '"';
+        document.getElementById('status').innerText = '✅ Got it! Sending to Aadi...';
+        
+        // Find the text input and set the value
+        const textarea = window.parent.document.querySelector('textarea[aria-label="Type here..."]');
+        if (textarea) {
+            // Set value
+            const nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set;
+            nativeTextAreaValueSetter.call(textarea, transcript);
+            
+            // Trigger events
+            textarea.dispatchEvent(new Event('input', { bubbles: true }));
+            textarea.dispatchEvent(new Event('change', { bubbles: true }));
+            
+            // Submit after a short delay
+            setTimeout(() => {
+                const submitButton = window.parent.document.querySelector('button[kind="primary"]');
+                if (submitButton) {
+                    submitButton.click();
+                }
+            }, 500);
+        }
+        
+        document.getElementById('voiceBtn').disabled = false;
+    };
+    
+    recognition.onerror = function(event) {
+        document.getElementById('status').innerText = '❌ Error: ' + event.error;
+        document.getElementById('voiceBtn').disabled = false;
+    };
+    
+    recognition.onend = function() {
+        if (document.getElementById('status').innerText === '🎤 Listening... Speak now!') {
+            document.getElementById('status').innerText = '⚠️ No speech detected. Try again!';
+        }
+        document.getElementById('voiceBtn').disabled = false;
+    };
+    </script>
+    """
+    
+    st.components.v1.html(voice_html, height=180)
     st.markdown("---")
     
     # Display chat history
