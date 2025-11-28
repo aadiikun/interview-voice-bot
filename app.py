@@ -126,9 +126,18 @@ def autoplay_audio(audio_bytes):
     """Create audio player with autoplay"""
     audio_b64 = base64.b64encode(audio_bytes.read()).decode()
     audio_html = f"""
-        <audio autoplay>
+        <audio controls autoplay style="width: 100%;">
             <source src="data:audio/mp3;base64,{audio_b64}" type="audio/mp3">
         </audio>
+        <script>
+            // Force play after a brief delay to bypass autoplay restrictions
+            setTimeout(function() {{
+                var audio = document.querySelector('audio');
+                if (audio) {{
+                    audio.play().catch(e => console.log('Autoplay prevented:', e));
+                }}
+            }}, 100);
+        </script>
     """
     st.markdown(audio_html, unsafe_allow_html=True)
 
