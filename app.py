@@ -2,9 +2,7 @@ import streamlit as st
 import requests
 from gtts import gTTS
 import os
-import base64
 from io import BytesIO
-from streamlit_mic_recorder import mic_recorder
 
 # Page config
 st.set_page_config(
@@ -161,75 +159,36 @@ def main():
         st.session_state.messages = []
     if 'conversation_history' not in st.session_state:
         st.session_state.conversation_history = []
+    if 'last_transcript' not in st.session_state:
+        st.session_state.last_transcript = ""
     
     # Voice Input Section
     st.markdown("### 🎤 Voice Input")
     
-    # Custom HTML with voice recognition
-    voice_html = """
-    <div style="text-align: center; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 10px; margin-bottom: 20px;">
-        <button id="voiceBtn" onclick="startListening()" 
-                style="background: white; color: #667eea; border: none; padding: 15px 40px; 
-                       font-size: 18px; border-radius: 50px; cursor: pointer; font-weight: bold;
-                       box-shadow: 0 4px 15px rgba(0,0,0,0.2); transition: all 0.3s;">
-            🎤 Click & Speak
-        </button>
-        <p id="status" style="color: white; margin-top: 15px; font-size: 16px; font-weight: 500;">Ready to listen...</p>
-        <p id="transcript" style="color: #fff; margin-top: 10px; font-style: italic; font-size: 14px; min-height: 20px;"></p>
-    </div>
+    try:
+        from streamlit_mic_recorder import mic_recorder
+        
+        audio = mic_recorder(
+            start_prompt="🎤 Start Recording",
+            stop_prompt="⏹️ Stop Recording",
+            just_once=False,
+            use_container_width=True,
+            key='recorder'
+        )
+        
+        if audio:
+            with st.spinner("🎵 Transcribing your speech..."):
+                audio_bytes = audio['bytes']
+                transcript = transcribe_audio_groq(audio_bytes)
+                
+                if transcript and transcript != st.session_state.last_transcript:
+                    st.session_state.last_transcript = transcript
+                    st.success(f'📝 You said: "{transcript}"')
+                    # Automatically process
+                    process_input(transcript)
+    except ImportError:
+        st.warning("⚠️ Voice recording not available. Please use text input below.")
     
-    <script>
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    
-    if (!SpeechRecognition) {
-        document.getElementById('status').innerText = '❌ Voice input requires Chrome, Edge, or Safari';
-        document.getElementById('voiceBtn').disabled = true;
-        document.getElementById('voiceBtn').style.background = '#ccc';
-    } else {
-        const recognition = new SpeechRecognition();
-        recognition.continuous = false;
-        recognition.interimResults = false;
-        recognition.lang = 'en-US';
-        
-        window.startListening = function() {
-            document.getElementById('status').innerText = '🎤 Listening... Speak now!';
-            document.getElementById('transcript').innerText = '';
-            document.getElementById('voiceBtn').style.transform = 'scale(0.95)';
-            recognition.start();
-        }
-        
-        recognition.onresult = function(event) {
-            const transcript = event.results[0][0].transcript;
-            document.getElementById('transcript').innerText = '📝 You said: "' + transcript + '"';
-            document.getElementById('status').innerText = '✅ Got it! Copy and paste below ⬇️';
-            
-            // Try to copy to clipboard
-            navigator.clipboard.writeText(transcript).then(function() {
-                document.getElementById('status').innerText = '✅ Copied! Now paste in the text box below ⬇️';
-            }).catch(function() {
-                document.getElementById('status').innerText = '✅ Got it! Copy the text above and paste below ⬇️';
-            });
-            
-            document.getElementById('voiceBtn').style.transform = 'scale(1)';
-        };
-        
-        recognition.onerror = function(event) {
-            if (event.error === 'no-speech') {
-                document.getElementById('status').innerText = '⚠️ No speech detected. Try again!';
-            } else {
-                document.getElementById('status').innerText = '❌ Error: ' + event.error;
-            }
-            document.getElementById('voiceBtn').style.transform = 'scale(1)';
-        };
-        
-        recognition.onend = function() {
-            document.getElementById('voiceBtn').style.transform = 'scale(1)';
-        };
-    }
-    </script>
-    """
-    
-    st.components.v1.html(voice_html, height=200)
     st.markdown("---")
     
     # Display chat history
@@ -266,7 +225,7 @@ def main():
     
     # Text input
     st.markdown("### ⌨️ Type Your Question")
-    user_input = st.chat_input("Type or paste your question here...")
+    user_input = st.chat_input("Type your question here...")
     
     if user_input:
         process_input(user_input)
