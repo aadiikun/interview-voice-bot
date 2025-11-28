@@ -4,10 +4,6 @@ from gtts import gTTS
 import os
 import base64
 from io import BytesIO
-import speech_recognition as sr
-from tempfile import NamedTemporaryFile
-from dotenv import load_dotenv
-load_dotenv()
 
 # Page config
 st.set_page_config(
@@ -73,17 +69,15 @@ Stick to this personality with emotional intelligence.
 
 def get_groq_api_key():
     """Get Groq API key from Streamlit secrets or environment"""
-    # First try Streamlit secrets (for cloud deployment)
     try:
-        api_key = st.secrets["GROQ_API_KEY"]  
+        api_key = st.secrets["GROQ_API_KEY"]
         return api_key
     except:
         pass
     
-    # Fallback to environment variable (for local testing)
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
-        st.error("⚠️ GROQ_API_KEY not found!")
+        st.error("⚠️ GROQ_API_KEY not found in secrets or environment!")
         st.stop()
     return api_key
 
@@ -138,25 +132,11 @@ def autoplay_audio(audio_bytes):
     """
     st.markdown(audio_html, unsafe_allow_html=True)
 
-def transcribe_audio(audio_file):
-    """Transcribe audio using speech_recognition"""
-    recognizer = sr.Recognizer()
-    try:
-        with sr.AudioFile(audio_file) as source:
-            audio_data = recognizer.record(source)
-            text = recognizer.recognize_google(audio_data)
-            return text
-    except sr.UnknownValueError:
-        return None
-    except sr.RequestError as e:
-        st.error(f"Could not request results: {e}")
-        return None
-
 # Main App
 def main():
     # Header
     st.markdown("<h1 class='main-header'>🎤 Aadi - Voice Interview Bot</h1>", unsafe_allow_html=True)
-    st.markdown("<p class='subtitle'>Speak or type your questions about Aditya!</p>", unsafe_allow_html=True)
+    st.markdown("<p class='subtitle'>Ask me about Aditya's journey, superpowers, and what drives him!</p>", unsafe_allow_html=True)
     
     # Verify API key
     get_groq_api_key()
@@ -167,31 +147,12 @@ def main():
     if 'conversation_history' not in st.session_state:
         st.session_state.conversation_history = []
     
-    # Voice Input Section
+    # Voice Input Section (Browser-based)
     st.markdown("### 🎤 Voice Input")
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        audio_file = st.audio_input("Click to record your question")
+    audio_file = st.audio_input("Click to record your question")
     
     if audio_file is not None:
-        with st.spinner("Transcribing your voice..."):
-            # Save audio to temporary file
-            with NamedTemporaryFile(delete=False, suffix=".wav") as temp_audio:
-                temp_audio.write(audio_file.getvalue())
-                temp_audio_path = temp_audio.name
-            
-            # Transcribe
-            transcript = transcribe_audio(temp_audio_path)
-            
-            # Clean up
-            os.unlink(temp_audio_path)
-            
-            if transcript:
-                st.success(f"You said: *{transcript}*")
-                process_input(transcript)
-            else:
-                st.error("Could not understand audio. Please try again.")
+        st.info("📝 Voice transcription feature requires additional setup. Please type your question below for now.")
     
     st.markdown("---")
     
@@ -226,7 +187,7 @@ def main():
     
     # Text input
     st.markdown("### ⌨️ Type Your Question")
-    if user_input := st.chat_input("Or type here..."):
+    if user_input := st.chat_input("Type here..."):
         process_input(user_input)
 
 def process_input(user_input):
