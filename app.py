@@ -4,6 +4,7 @@ from gtts import gTTS
 import os
 import base64
 from io import BytesIO
+from streamlit_mic_recorder import mic_recorder
 
 # Page config
 st.set_page_config(
@@ -80,6 +81,30 @@ def get_groq_api_key():
         st.error("⚠️ GROQ_API_KEY not found!")
         st.stop()
     return api_key
+
+def transcribe_audio_groq(audio_bytes):
+    """Transcribe audio using Groq's Whisper API"""
+    api_key = get_groq_api_key()
+    
+    url = "https://api.groq.com/openai/v1/audio/transcriptions"
+    headers = {
+        "Authorization": f"Bearer {api_key}"
+    }
+    
+    files = {
+        'file': ('audio.wav', audio_bytes, 'audio/wav'),
+        'model': (None, 'whisper-large-v3'),
+        'language': (None, 'en')
+    }
+    
+    try:
+        response = requests.post(url, headers=headers, files=files, timeout=30)
+        response.raise_for_status()
+        result = response.json()
+        return result.get('text', '')
+    except Exception as e:
+        st.error(f"Transcription error: {str(e)}")
+        return None
 
 def get_ai_response(user_message, conversation_history):
     """Get response from Groq API"""
